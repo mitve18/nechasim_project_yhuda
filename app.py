@@ -9,11 +9,12 @@ import streamlit as st
 # 1. טעינת משתני סביבה מ-Secrets ל-os.environ
 # ==========================================
 OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY", ""))
+CHROMA_KEY = st.secrets.get("CHROMA_OPENAI_API_KEY", OPENAI_API_KEY)
 GOOGLE_DRIVE_FOLDER_ID = st.secrets.get("GOOGLE_DRIVE_FOLDER_ID", os.getenv("GOOGLE_DRIVE_FOLDER_ID", "1Q_isBiLXre0PGEFsc7Y9CS3EU8W1DzB2"))
 
 if OPENAI_API_KEY:
     os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
-    os.environ["CHROMA_OPENAI_API_KEY"] = OPENAI_API_KEY
+    os.environ["CHROMA_OPENAI_API_KEY"] = CHROMA_KEY
 
 from openai import OpenAI
 import chromadb
