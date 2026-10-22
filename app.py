@@ -200,7 +200,7 @@ def generate_strict_contract_proposal(selected_category, party_a, party_b, speci
 
 הנחיות לניסוח:
 1. ניסוח משפטי מחייב, מדויק, כולל פתיח (הואיל ו...), סעיפי התחייבות, ערבויות וסמכות שיפוט.
-2. שלב באופן טבעי את שמות הצדדים ({party_a} ו-{party_b}) והדגשים المיוחדים ({special_terms}).
+2. שלב באופן טבעי את שמות הצדדים ({party_a} ו-{party_b}) והדגשים המיוחדים ({special_terms}).
 """
 
     response = client.chat.completions.create(
@@ -238,4 +238,66 @@ with tab1:
         if agreement_types:
             selected_category = st.selectbox("🎯 בחר סוג הסכם להתבססות:", agreement_types)
         else:
-            selected_category = st.text_input("סוג ההסכם", value="לדוגמא
+            selected_category = st.text_input("סוג ההסכם", value="לדוגמא: אספקת עוגות לתחום GIS")
+        
+        party_a = st.text_input("שם צד א' (למשל: משרד הביטחון / מזמין)")
+
+    with col2:
+        party_b = st.text_input("שם צד ב' (למשל: הקבלן / הספק)")
+
+    special_terms = st.text_area("✍️ תנאים מיוחדים ודגשים למסמך", placeholder="פרט תאריכים, סכומים, ערבויות או דגשים מיוחדים...")
+
+    if st.button("🚀 נסח הצעה להסכם"):
+        if not party_a or not party_b:
+            st.warning("אנא מלא את שמות הצדדים.")
+        else:
+            with st.spinner("שולף סעיפים תואמים מתוך הדרייב המשרדי ומנסח מסמך..."):
+                proposal, context_used, sources = generate_strict_contract_proposal(
+                    selected_category, party_a, party_b, special_terms, collection, client
+                )
+                
+                st.session_state["current_proposal"] = proposal
+                st.session_state["current_category"] = selected_category
+                
+                st.success("המסמך נוסח בהצלחה!")
+                if sources:
+                    st.info(f"📚 מסמכי המקור בדרייב המשרדי ששימשו בסיס לניסוח: {', '.join(sources)}")
+                
+                st.markdown("### 📄 טיוטת המסמך המוצעת:")
+                st.text_area("תוכן ההסכם", value=proposal, height=400)
+
+    if "current_proposal" in st.session_state:
+        st.markdown("---")
+        if st.button("💾 שמור הסכם זה בחזרה ישירות ל-Google Drive המשרדי"):
+            with st.spinner("מעלה את המסמך המנוסח לתיקייה בדרייב..."):
+                success, file_id = upload_text_as_file_to_drive(
+                    st.session_state["current_category"],
+                    st.session_state["current_proposal"]
+                )
+                if success:
+                    st.success("🎉 המסמך נשמר בהצלחה בתיקיית ה-Google Drive המשרדית!")
+                else:
+                    st.error("שגיאה בעת שמירת המסמך לדרייב.")
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
+with tab2:
+    st.markdown('<div class="css-card">', unsafe_allow_html=True)
+    st.subheader("📤 העלאת קובצי PDF סרוקים ישירות ל-Google Drive המשרדי")
+    uploaded_files = st.file_uploader("בחר קובצי PDF להעלאה", type=["pdf"], accept_multiple_files=True)
+    if st.button("עלה ל-Drive"):
+        st.info("הקבצים יעלו לתיקייה המשרדית ויעובדו בסנכרון הבא.")
+    st.markdown('</div>', unsafe_allow_html=True)
+
+with tab3:
+    st.markdown('<div class="css-card">', unsafe_allow_html=True)
+    st.subheader("🔄 סטטוס הדרייב המשרדי והסכמים שנלמדו")
+    st.write(f"📂 מזהה התיקייה בדרייב: **`{GOOGLE_DRIVE_FOLDER_ID}`**")
+    st.write(f"📅 סנכרון אחרון: **{log_data.get('last_sync', 'טרם בוצע')}**")
+    st.write(f"📄 סך הכל קבצים שעובדו: **{len(log_data.get('processed_files', []))}**")
+    
+    if agreement_types:
+        st.markdown("### 🏷️ סוגי ההסכמים הזמינים במערכת:")
+        for t in agreement_types:
+            st.markdown(f"- **`{t}`**")
+    st.markdown('</div>', unsafe_allow_html=True)
