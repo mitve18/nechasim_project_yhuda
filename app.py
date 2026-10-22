@@ -164,7 +164,17 @@ def get_vector_db():
     )
 
 def get_drive_service():
-    # 1. ניסיון קריאה מ-Streamlit Secrets (חשבון שירות ענן)
+    # 1. קריאת Token מ-Streamlit Secrets (הגדרת הענן הראשית)
+    if "GOOGLE_TOKEN_JSON" in st.secrets:
+        try:
+            token_info = json.loads(st.secrets["GOOGLE_TOKEN_JSON"])
+            creds = UserCredentials.from_authorized_user_info(token_info, SCOPES)
+            if creds and creds.valid:
+                return build('drive', 'v3', credentials=creds)
+        except Exception as e:
+            st.error(f"שגיאה בפענוח GOOGLE_TOKEN_JSON: {e}")
+
+    # 2. ניסיון קריאה מ-GCP_SERVICE_ACCOUNT
     if "GCP_SERVICE_ACCOUNT" in st.secrets:
         try:
             creds_dict = json.loads(st.secrets["GCP_SERVICE_ACCOUNT"])
@@ -173,7 +183,7 @@ def get_drive_service():
         except Exception as e:
             st.error(f"שגיאה בחיבור דרך Service Account: {e}")
 
-    # 2. ניסיון קריאה מקובץ token.json מקומי
+    # 3. ניסיון קריאה מקומית מקובץ token.json
     if os.path.exists('token.json'):
         try:
             creds = UserCredentials.from_authorized_user_file('token.json', SCOPES)
