@@ -37,6 +37,9 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
+# ==========================================
+# 2. תיקון CSS לניגודיות וקריאות מקסימלית בנייד
+# ==========================================
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Rubik:wght@300;400;500;700&display=swap');
@@ -45,10 +48,10 @@ st.markdown("""
         font-family: 'Rubik', sans-serif;
         direction: rtl;
         text-align: right;
-        background-color: #f8fafc;
     }
     
     .stApp {
+        background-color: #f8fafc !important;
         background-image: linear-gradient(rgba(248, 250, 252, 0.94), rgba(248, 250, 252, 0.94)), 
                           url('https://upload.wikimedia.org/wikipedia/commons/e/e2/Israel_Defense_Ministry_Symbol.png');
         background-repeat: no-repeat;
@@ -57,9 +60,29 @@ st.markdown("""
         background-attachment: fixed;
     }
 
+    /* תיקון צבעי טקסט וכותרות לקריאות מוחלטת */
+    h1, h2, h3, h4, h5, h6, p, label, span, div {
+        color: #0f172a !important;
+    }
+
+    /* תוויות של שדות קלט (Input Labels) */
+    .stTextInput > label, .stSelectbox > label, .stTextArea > label {
+        color: #0f172a !important;
+        font-weight: 700 !important;
+        font-size: 1.05rem !important;
+    }
+
+    /* תיבות קלט (Inputs) */
+    .stTextInput input, .stTextArea textarea, div[data-baseweb="select"] {
+        background-color: #ffffff !important;
+        color: #0f172a !important;
+        border: 2px solid #cbd5e1 !important;
+        border-radius: 10px !important;
+    }
+
+    /* כותרת מיוחדת מעוצבת */
     .main-header {
         background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-        color: #ffffff;
         padding: 2rem 2.5rem;
         border-radius: 20px;
         box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2);
@@ -70,23 +93,22 @@ st.markdown("""
         justify-content: space-between;
     }
 
-    .main-header h1 {
-        margin: 0;
-        font-weight: 700;
-        font-size: 2.1rem;
-        color: #f8fafc;
+    .main-header h1, .main-header p {
+        color: #ffffff !important;
     }
 
+    /* כרטיסיות קונטיינר מעוצבות */
     .css-card {
-        background: rgba(255, 255, 255, 0.88);
+        background: rgba(255, 255, 255, 0.92);
         backdrop-filter: blur(12px);
-        border: 1px solid rgba(226, 232, 240, 0.8);
+        border: 1px solid rgba(226, 232, 240, 0.9);
         border-radius: 16px;
         padding: 1.8rem;
         box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
         margin-bottom: 1.5rem;
     }
 
+    /* כפתורים מעוצבים */
     .stButton > button {
         background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%) !important;
         color: white !important;
