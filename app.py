@@ -167,9 +167,18 @@ def get_drive_service():
     # 1. קריאת Token מ-Streamlit Secrets (הגדרת הענן הראשית)
     if "GOOGLE_TOKEN_JSON" in st.secrets:
         try:
-            token_info = json.loads(st.secrets["GOOGLE_TOKEN_JSON"])
+            token_raw = st.secrets["GOOGLE_TOKEN_JSON"]
+            if isinstance(token_raw, str):
+                token_info = json.loads(token_raw)
+            else:
+                token_info = dict(token_raw)
+                
             creds = UserCredentials.from_authorized_user_info(token_info, SCOPES)
             if creds and creds.valid:
+                return build('drive', 'v3', credentials=creds)
+            elif creds and creds.expired and creds.refresh_token:
+                from google.auth.transport.requests import Request
+                creds.refresh(Request())
                 return build('drive', 'v3', credentials=creds)
         except Exception as e:
             st.error(f"שגיאה בפענוח GOOGLE_TOKEN_JSON: {e}")
@@ -177,7 +186,8 @@ def get_drive_service():
     # 2. ניסיון קריאה מ-GCP_SERVICE_ACCOUNT
     if "GCP_SERVICE_ACCOUNT" in st.secrets:
         try:
-            creds_dict = json.loads(st.secrets["GCP_SERVICE_ACCOUNT"])
+            creds_raw = st.secrets["GCP_SERVICE_ACCOUNT"]
+            creds_dict = json.loads(creds_raw) if isinstance(creds_raw, str) else dict(creds_raw)
             creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
             return build('drive', 'v3', credentials=creds)
         except Exception as e:
@@ -197,7 +207,7 @@ def get_drive_service():
 def upload_text_as_file_to_drive(file_title, text_content):
     drive_service = get_drive_service()
     if not drive_service:
-        return False, "לא מוגדרות הרשאות חיבור תקפות ל-Google Drive בשרת הענן."
+        return False, "לא נמצאו הרשאות חיבור תקפות ב-Streamlit Secrets (נא לוודא את תקינות GOOGLE_TOKEN_JSON)."
 
     try:
         file_metadata = {
