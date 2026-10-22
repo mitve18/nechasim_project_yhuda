@@ -164,7 +164,7 @@ def get_vector_db():
     )
 
 def get_drive_service():
-    # 1. קריאת Token מ-Streamlit Secrets (הגדרת הענן הראשית)
+    # 1. קריאת Token מ-Streamlit Secrets
     if "GOOGLE_TOKEN_JSON" in st.secrets:
         try:
             token_raw = st.secrets["GOOGLE_TOKEN_JSON"]
@@ -215,7 +215,8 @@ def upload_text_as_file_to_drive(file_title, text_content):
             'parents': [GOOGLE_DRIVE_FOLDER_ID]
         }
         media = MediaIoBaseUpload(io.BytesIO(text_content.encode('utf-8')), mimetype='text/plain')
-        uploaded_file = drive_service.files().create(body=file_metadata, mediaBody=media, fields='id').execute()
+        # תיקון פרמטר: media_body בקו תחתון
+        uploaded_file = drive_service.files().create(body=file_metadata, media_body=media, fields='id').execute()
         return True, uploaded_file.get('id')
     except Exception as e:
         return False, str(e)
