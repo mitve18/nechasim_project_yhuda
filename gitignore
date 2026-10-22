@@ -1,0 +1,7 @@
+credentials.json
+token.json
+secret_key.py
+sync_log.json
+chroma_db/
+__pycache__/
+.env
