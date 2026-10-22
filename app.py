@@ -20,6 +20,10 @@ from openai import OpenAI
 import chromadb
 from chromadb.utils import embedding_functions
 
+# יבוא ליצירת קובצי Word ו-PDF
+from docx import Document
+from fpdf import FPDF
+
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -116,6 +120,30 @@ st.markdown("""
     }
     </style>
 """, unsafe_allow_html=True)
+
+# ==========================================
+# 3. פונקציות יצירת קבצי Word ו-PDF
+# ==========================================
+def create_docx(text_content):
+    doc = Document()
+    doc.add_heading('הצעה להסכם - יחידת מתוו"ה', level=1)
+    for paragraph in text_content.split('\n'):
+        if paragraph.strip():
+            doc.add_paragraph(paragraph)
+    bio = io.BytesIO()
+    doc.save(bio)
+    return bio.getvalue()
+
+def create_pdf(text_content):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", size=11)
+    # טיפול בטקסט רגיל לייצוא PDF
+    lines = text_content.split('\n')
+    for line in lines:
+        cleaned_line = line.encode('latin-1', 'replace').decode('latin-1')
+        pdf.multi_cell(0, 8, cleaned_line)
+    return pdf.output(dest='S').encode('latin-1', 'replace')
 
 @st.cache_resource
 def get_openai_client():
@@ -257,27 +285,70 @@ with tab1:
                 )
                 
                 st.session_state["current_proposal"] = proposal
+                st.session_state["edited_proposal"] = proposal
                 st.session_state["current_category"] = selected_category
+                st.session_state["show_edit_box"] = False
                 
                 st.success("המסמך נוסח בהצלחה!")
                 if sources:
                     st.info(f"📚 מסמכי המקור בדרייב המשרדי ששימשו בסיס לניסוח: {', '.join(sources)}")
-                
-                st.markdown("### 📄 טיוטת המסמך המוצעת:")
-                st.text_area("תוכן ההסכם", value=proposal, height=400)
 
     if "current_proposal" in st.session_state:
-        st.markdown("---")
-        if st.button("💾 שמור הסכם זה בחזרה ישירות ל-Google Drive המשרדי"):
-            with st.spinner("מעלה את המסמך המנוסח לתיקייה בדרייב..."):
-                success, file_id = upload_text_as_file_to_drive(
-                    st.session_state["current_category"],
-                    st.session_state["current_proposal"]
-                )
-                if success:
-                    st.success("🎉 המסמך נשמר בהצלחה בתיקיית ה-Google Drive המשרדית!")
-                else:
-                    st.error("שגיאה בעת שמירת המסמך לדרייב.")
+        st.markdown("### 📄 טיוטת המסמך המוצעת:")
+        
+        # תצוגת המסמך
+        current_text = st.session_state.get("edited_proposal", st.session_state["current_proposal"])
+        st.text_area("תוכן ההסכם (תצוגה)", value=current_text, height=350, key="display_area")
+
+        # ==========================================
+        # כפתורי הפעולה החדשים
+        # ==========================================
+        btn_col1, btn_col2, btn_col3, btn_col4 = st.columns(4)
+
+        with btn_col1:
+            if st.button("✏️ ערוך את ההסכם המוצע"):
+                st.session_state["show_edit_box"] = not st.session_state.get("show_edit_box", False)
+
+        with btn_col2:
+            docx_data = create_docx(current_text)
+            st.download_button(
+                label="📄 יצא ל-WORD",
+                data=docx_data,
+                file_name=f"{st.session_state.get('current_category', 'הסכם')}.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            )
+
+        with btn_col3:
+            pdf_data = create_pdf(current_text)
+            st.download_button(
+                label="Picture/PDF יצא ל-PDF",
+                data=pdf_data,
+                file_name=f"{st.session_state.get('current_category', 'הסכם')}.pdf",
+                mime="application/pdf"
+            )
+
+        with btn_col4:
+            if st.button("💾 שמור ב-Drive"):
+                with st.spinner("מעלה את המסמך המנוסח לתיקייה בדרייב..."):
+                    success, file_id = upload_text_as_file_to_drive(
+                        st.session_state["current_category"],
+                        current_text
+                    )
+                    if success:
+                        st.success("🎉 המסמך נשמר בהצלחה ב-Google Drive!")
+                    else:
+                        st.error("שגיאה בעת שמירת המסמך לדרייב.")
+
+        # תיבת עריכה שנפתחת בלחיצה על "ערוך את ההסכם המוצע"
+        if st.session_state.get("show_edit_box", False):
+            st.markdown("---")
+            st.subheader("✏️ עריכת הטקסט המוצע:")
+            edited_text = st.text_area("בצע את השינויים הרצויים כאן:", value=current_text, height=400, key="edit_area")
+            if st.button("✅ אישור ועדכון השינויים"):
+                st.session_state["edited_proposal"] = edited_text
+                st.session_state["show_edit_box"] = False
+                st.success("הטקסט עודכן בהצלחה!")
+                st.rerun()
 
     st.markdown('</div>', unsafe_allow_html=True)
 
