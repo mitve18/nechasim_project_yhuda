@@ -2,6 +2,7 @@ import os
 import io
 import time
 import json
+import urllib.request
 from datetime import datetime
 import streamlit as st
 
@@ -20,8 +21,9 @@ from openai import OpenAI
 import chromadb
 from chromadb.utils import embedding_functions
 
-# יבוא ליצירת קובצי Word ו-PDF
 from docx import Document
+from docx.shared import Inches, Pt, RGBColor
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 from fpdf import FPDF
 
 from googleapiclient.discovery import build
@@ -29,7 +31,7 @@ from googleapiclient.http import MediaIoBaseUpload
 from google.oauth2.service_account import Credentials
 from google.oauth2.credentials import Credentials as UserCredentials
 
-GOOGLE_CREDENTIALS_FILE = "credentials.json"
+LOGO_URL = "https://upload.wikimedia.org/wikipedia/commons/e/e2/Israel_Defense_Ministry_Symbol.png"
 SCOPES = ['https://www.googleapis.com/auth/drive']
 CHROMA_DB_PATH = "./chroma_db"
 SYNC_LOG_FILE = "sync_log.json"
@@ -122,26 +124,96 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 3. פונקציות יצירת קבצי Word ו-PDF
+# 3. פונקציות עזר להורדת לוגו ויצירת קבצים
 # ==========================================
-def create_docx(text_content):
+def get_logo_bytes():
+    try:
+        req = urllib.request.Request(LOGO_URL, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req) as response:
+            return response.read()
+    except Exception:
+        return None
+
+class PDFWithHeaderFooter(FPDF):
+    def header(self):
+        self.set_font("Arial", 'B', 10)
+        self.cell(0, 8, "בלתי מסווג", align='C', ln=True)
+        self.set_font("Arial", '', 9)
+        self.cell(0, 5, f"תאריך: {datetime.now().strftime('%d/%m/%Y')}", align='R', ln=True)
+        self.ln(5)
+
+    def footer(self):
+        self.set_y(-15)
+        self.set_font("Arial", 'I', 8)
+        self.cell(0, 10, f"עמוד {self.page_no()}", align='C')
+
+def create_docx(text_content, category_name, party_a, party_b):
     doc = Document()
-    doc.add_heading('הצעה להסכם - יחידת מתוו"ה', level=1)
+    
+    # הוספת סיווג בכותרת עליונה
+    section = doc.sections[0]
+    header = section.header
+    hp = header.paragraphs[0]
+    hp.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    hrun = hp.add_run("בלתי מסווג")
+    hrun.font.bold = True
+    hrun.font.size = Pt(10)
+    
+    # הוספת לוגו משרד הביטחון
+    logo_bytes = get_logo_bytes()
+    if logo_bytes:
+        logo_stream = io.BytesIO(logo_bytes)
+        p_logo = doc.add_paragraph()
+        p_logo.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p_logo.add_run().add_picture(logo_stream, width=Inches(1.2))
+
+    # כותרת ותאריך
+    title_p = doc.add_paragraph()
+    title_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    t_run = title_p.add_run(f"משרד הביטחון - יחידת מתוו\"ה\n{category_name}")
+    t_run.font.bold = True
+    t_run.font.size = Pt(16)
+    
+    details_p = doc.add_paragraph()
+    details_p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    d_run = details_p.add_run(f"תאריך ניסוח: {datetime.now().strftime('%d/%m/%Y')}\nבין: {party_a} לבין: {party_b}\n")
+    d_run.font.size = Pt(10)
+    
+    # תוכן המסמך
     for paragraph in text_content.split('\n'):
         if paragraph.strip():
-            doc.add_paragraph(paragraph)
+            p = doc.add_paragraph()
+            p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+            p.add_run(paragraph)
+            
+    # כותרת תחתית - סיווג
+    footer = section.footer
+    fp = footer.paragraphs[0]
+    fp.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    frun = fp.add_run("בלתי מסווג")
+    frun.font.bold = True
+
     bio = io.BytesIO()
     doc.save(bio)
     return bio.getvalue()
 
-def create_pdf(text_content):
-    pdf = FPDF()
+def create_pdf(text_content, category_name, party_a, party_b):
+    pdf = PDFWithHeaderFooter()
     pdf.add_page()
-    pdf.set_font("Arial", size=11)
+    
+    pdf.set_font("Arial", 'B', 14)
+    pdf.multi_cell(0, 8, f"משרד הביטחון - יחידת מתוו\"ה\n{category_name}".encode('latin-1', 'replace').decode('latin-1'), align='C')
+    pdf.ln(3)
+    
+    pdf.set_font("Arial", '', 10)
+    pdf.multi_cell(0, 6, f"בין: {party_a} לבין: {party_b}".encode('latin-1', 'replace').decode('latin-1'), align='R')
+    pdf.ln(5)
+    
     lines = text_content.split('\n')
     for line in lines:
         cleaned_line = line.encode('latin-1', 'replace').decode('latin-1')
-        pdf.multi_cell(0, 8, cleaned_line)
+        pdf.multi_cell(0, 6, cleaned_line, align='R')
+        
     return pdf.output(dest='S').encode('latin-1', 'replace')
 
 @st.cache_resource
@@ -164,15 +236,10 @@ def get_vector_db():
     )
 
 def get_drive_service():
-    # 1. קריאת Token מ-Streamlit Secrets
     if "GOOGLE_TOKEN_JSON" in st.secrets:
         try:
             token_raw = st.secrets["GOOGLE_TOKEN_JSON"]
-            if isinstance(token_raw, str):
-                token_info = json.loads(token_raw)
-            else:
-                token_info = dict(token_raw)
-                
+            token_info = json.loads(token_raw) if isinstance(token_raw, str) else dict(token_raw)
             creds = UserCredentials.from_authorized_user_info(token_info, SCOPES)
             if creds and creds.valid:
                 return build('drive', 'v3', credentials=creds)
@@ -183,7 +250,6 @@ def get_drive_service():
         except Exception as e:
             st.error(f"שגיאה בפענוח GOOGLE_TOKEN_JSON: {e}")
 
-    # 2. ניסיון קריאה מ-GCP_SERVICE_ACCOUNT
     if "GCP_SERVICE_ACCOUNT" in st.secrets:
         try:
             creds_raw = st.secrets["GCP_SERVICE_ACCOUNT"]
@@ -193,7 +259,6 @@ def get_drive_service():
         except Exception as e:
             st.error(f"שגיאה בחיבור דרך Service Account: {e}")
 
-    # 3. ניסיון קריאה מקומית מקובץ token.json
     if os.path.exists('token.json'):
         try:
             creds = UserCredentials.from_authorized_user_file('token.json', SCOPES)
@@ -204,18 +269,20 @@ def get_drive_service():
 
     return None
 
-def upload_text_as_file_to_drive(file_title, text_content):
+def upload_text_as_file_to_drive(file_title, text_content, party_a, party_b):
     drive_service = get_drive_service()
     if not drive_service:
         return False, "לא נמצאו הרשאות חיבור תקפות ב-Streamlit Secrets (נא לוודא את תקינות GOOGLE_TOKEN_JSON)."
 
     try:
+        timestamp_str = datetime.now().strftime('%Y%m%d_%H%M')
+        formatted_filename = f"{file_title}_בין_{party_a}_לבין_{party_b}_{timestamp_str}.txt"
+        
         file_metadata = {
-            'name': f"{file_title}_{datetime.now().strftime('%Y%m%d_%H%M')}.txt",
+            'name': formatted_filename,
             'parents': [GOOGLE_DRIVE_FOLDER_ID]
         }
         media = MediaIoBaseUpload(io.BytesIO(text_content.encode('utf-8')), mimetype='text/plain')
-        # תיקון פרמטר: media_body בקו תחתון
         uploaded_file = drive_service.files().create(body=file_metadata, media_body=media, fields='id').execute()
         return True, uploaded_file.get('id')
     except Exception as e:
@@ -318,6 +385,8 @@ with tab1:
                 st.session_state["current_proposal"] = proposal
                 st.session_state["edited_proposal"] = proposal
                 st.session_state["current_category"] = selected_category
+                st.session_state["party_a"] = party_a
+                st.session_state["party_b"] = party_b
                 st.session_state["show_edit_box"] = False
                 
                 st.success("המסמך נוסח בהצלחה!")
@@ -332,25 +401,29 @@ with tab1:
 
         btn_col1, btn_col2, btn_col3, btn_col4 = st.columns(4)
 
+        cat = st.session_state.get('current_category', 'הסכם')
+        pa = st.session_state.get('party_a', 'צד א')
+        pb = st.session_state.get('party_b', 'צד ב')
+
         with btn_col1:
             if st.button("✏️ ערוך את ההסכם המוצע"):
                 st.session_state["show_edit_box"] = not st.session_state.get("show_edit_box", False)
 
         with btn_col2:
-            docx_data = create_docx(current_text)
+            docx_data = create_docx(current_text, cat, pa, pb)
             st.download_button(
                 label="📄 יצא ל-WORD",
                 data=docx_data,
-                file_name=f"{st.session_state.get('current_category', 'הסכם')}.docx",
+                file_name=f"{cat}_בין_{pa}_לבין_{pb}.docx",
                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             )
 
         with btn_col3:
-            pdf_data = create_pdf(current_text)
+            pdf_data = create_pdf(current_text, cat, pa, pb)
             st.download_button(
                 label="Picture/PDF יצא ל-PDF",
                 data=pdf_data,
-                file_name=f"{st.session_state.get('current_category', 'הסכם')}.pdf",
+                file_name=f"{cat}_בין_{pa}_לבין_{pb}.pdf",
                 mime="application/pdf"
             )
 
@@ -358,8 +431,10 @@ with tab1:
             if st.button("💾 שמור ב-Drive"):
                 with st.spinner("מעלה את המסמך המנוסח לתיקייה בדרייב..."):
                     success, res_msg = upload_text_as_file_to_drive(
-                        st.session_state["current_category"],
-                        current_text
+                        cat,
+                        current_text,
+                        pa,
+                        pb
                     )
                     if success:
                         st.success("🎉 המסמך נשמר בהצלחה ב-Google Drive!")
