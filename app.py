@@ -1,9 +1,7 @@
 import os
 import io
 import time
-import base64
 import json
-import fitz
 from datetime import datetime
 import streamlit as st
 
@@ -11,7 +9,15 @@ from openai import OpenAI
 import chromadb
 from chromadb.utils import embedding_functions
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseUpload
+from google_auth_oauthlib.flow import InstalledAppFlow
+from google.oauth2.credentials import Credentials
+
+OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY", ""))
+GOOGLE_DRIVE_FOLDER_ID = st.secrets.get("GOOGLE_DRIVE_FOLDER_ID", os.getenv("GOOGLE_DRIVE_FOLDER_ID", "1Q_isBiLXre0PGEFsc7Y9CS3EU8W1DzB2"))
+GOOGLE_CREDENTIALS_FILE = "credentials.json"
+SCOPES = ['https://www.googleapis.com/auth/drive']
 CHROMA_DB_PATH = "./chroma_db"
 SYNC_LOG_FILE = "sync_log.json"
 
@@ -89,7 +95,7 @@ st.markdown("""
 @st.cache_resource
 def get_openai_client():
     if not OPENAI_API_KEY:
-        st.error("אנא הגדר את OPENAI_API_KEY במשתני הסביבה.")
+        st.error("אנא הגדר את OPENAI_API_KEY ב-Secrets של Streamlit.")
         return None
     return OpenAI(api_key=OPENAI_API_KEY)
 
@@ -104,6 +110,32 @@ def get_vector_db():
         name="legal_agreements",
         embedding_function=openai_ef
     )
+
+def get_drive_service():
+    creds = None
+    if os.path.exists('token.json'):
+        creds = Credentials.from_authorized_user_file('token.json', SCOPES)
+    if not creds or not creds.valid:
+        if not os.path.exists(GOOGLE_CREDENTIALS_FILE):
+            return None
+        flow = InstalledAppFlow.from_client_secrets_file(GOOGLE_CREDENTIALS_FILE, SCOPES)
+        creds = flow.run_local_server(port=0)
+        with open('token.json', 'w') as token:
+            token.write(creds.to_json())
+    return build('drive', 'v3', credentials=creds)
+
+def upload_text_as_file_to_drive(file_title, text_content):
+    drive_service = get_drive_service()
+    if not drive_service:
+        return False, "שגיאה בחיבור ל-Google Drive."
+
+    file_metadata = {
+        'name': f"{file_title}_{datetime.now().strftime('%Y%m%d_%H%M')}.txt",
+        'parents': [GOOGLE_DRIVE_FOLDER_ID]
+    }
+    media = MediaIoBaseUpload(io.BytesIO(text_content.encode('utf-8')), mimetype='text/plain')
+    uploaded_file = drive_service.files().create(body=file_metadata, mediaBody=media, fields='id').execute()
+    return True, uploaded_file.get('id')
 
 def load_sync_log():
     if os.path.exists(SYNC_LOG_FILE):
@@ -154,18 +186,18 @@ def generate_strict_contract_proposal(selected_category, party_a, party_b, speci
 
     return response.choices[0].message.content, retrieved_context, list(sources_used)
 
-# --- ממשק משתמש ---
+# --- UI ---
 st.markdown("""
     <div class="main-header">
         <div>
             <h1>🏛️ משרד הביטחון - יחידת מתוו"ה</h1>
-            <p>מערכת ארגונית לניסוח, ניתוח ולמידת הסכמים</p>
+            <p>מערכת ארגונית לניסוח, ניתוח ולמידת הסכמים מול Google Drive המשרדי</p>
         </div>
         <div style="font-size: 2.5rem;">📜</div>
     </div>
 """, unsafe_allow_html=True)
 
-tab1, tab2, tab3 = st.tabs(["📝 ניסוח הסכם לפי סוג", "📤 העלאת קבצים", "🔄 ניהול וסנכרון"])
+tab1, tab2, tab3 = st.tabs(["📝 ניסוח הסכם מבוסס Drive", "📤 העלאת קבצים לדרייב", "🔄 סטטוס וסנכרון"])
 
 client = get_openai_client()
 collection = get_vector_db()
@@ -174,7 +206,7 @@ agreement_types = log_data.get("agreement_types", [])
 
 with tab1:
     st.markdown('<div class="css-card">', unsafe_allow_html=True)
-    st.subheader("📝 בחירת סוג הסכם לניסוח מתוך ידע המערכת")
+    st.subheader("📝 בחירת סוג הסכם מתוך מאגר הידע המשרדי ב-Drive")
     
     col1, col2 = st.columns(2)
     with col1:
@@ -194,36 +226,28 @@ with tab1:
         if not party_a or not party_b:
             st.warning("אנא מלא את שמות הצדדים.")
         else:
-            with st.spinner("שולף סעיפים תואמים מתוך סוג ההסכם הנבחר ומנסח מסמך..."):
+            with st.spinner("שולף סעיפים תואמים מתוך הדרייב המשרדי ומנסח מסמך..."):
                 proposal, context_used, sources = generate_strict_contract_proposal(
                     selected_category, party_a, party_b, special_terms, collection, client
                 )
                 
+                st.session_state["current_proposal"] = proposal
+                st.session_state["current_category"] = selected_category
+                
                 st.success("המסמך נוסח בהצלחה!")
                 if sources:
-                    st.info(f"📚 מסמכי המקור בדרייב ששימשו בסיס לניסוח: {', '.join(sources)}")
+                    st.info(f"📚 מסמכי המקור בדרייב המשרדי ששימשו בסיס לניסוח: {', '.join(sources)}")
                 
                 st.markdown("### 📄 טיוטת המסמך המוצעת:")
-                st.text_area("תוכן ההסכם", value=proposal, height=450)
+                st.text_area("תוכן ההסכם", value=proposal, height=400)
 
-                with st.expander("🔍 הצג את הקטעים המשפטיים שנשלפו (Context)"):
-                    st.text(context_used)
-    st.markdown('</div>', unsafe_allow_html=True)
-
-with tab2:
-    st.markdown('<div class="css-card">', unsafe_allow_html=True)
-    st.subheader("📤 העלאת קובצי PDF סרוקים ל-Google Drive")
-    st.info("העלה קבצים חדשים לתיקיית הדרייב והרץ סנכרון כדי שהמערכת תסווג אותם אוטומטית.")
-    st.markdown('</div>', unsafe_allow_html=True)
-
-with tab3:
-    st.markdown('<div class="css-card">', unsafe_allow_html=True)
-    st.subheader("🔄 סטטוס סוגי ההסכמים שנלמדו")
-    st.write(f"📅 סנכרון אחרון: **{log_data.get('last_sync', 'טרם בוצע')}**")
-    st.write(f"📂 סך הכל קבצים שעובדו: **{len(log_data.get('processed_files', []))}**")
-    
-    if agreement_types:
-        st.markdown("### 🏷️ סוגי ההסכמים הזמינים במערכת:")
-        for t in agreement_types:
-            st.markdown(f"- **`{t}`**")
-    st.markdown('</div>', unsafe_allow_html=True)
+    if "current_proposal" in st.session_state:
+        st.markdown("---")
+        if st.button("💾 שמור הסכם זה בחזרה ישירות ל-Google Drive המשרדי"):
+            with st.spinner("מעלה את המסמך המנוסח לתיקייה בדרייב..."):
+                success, file_id = upload_text_as_file_to_drive(
+                    st.session_state["current_category"],
+                    st.session_state["current_proposal"]
+                )
+                if success:
+                    st.success("🎉 המסמך נשמר בהצלחה בתיק
