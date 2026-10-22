@@ -5,6 +5,16 @@ import json
 from datetime import datetime
 import streamlit as st
 
+# ==========================================
+# 1. טעינת משתני סביבה מ-Secrets ל-os.environ
+# ==========================================
+OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY", ""))
+GOOGLE_DRIVE_FOLDER_ID = st.secrets.get("GOOGLE_DRIVE_FOLDER_ID", os.getenv("GOOGLE_DRIVE_FOLDER_ID", "1Q_isBiLXre0PGEFsc7Y9CS3EU8W1DzB2"))
+
+if OPENAI_API_KEY:
+    os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
+    os.environ["CHROMA_OPENAI_API_KEY"] = OPENAI_API_KEY
+
 from openai import OpenAI
 import chromadb
 from chromadb.utils import embedding_functions
@@ -14,8 +24,6 @@ from googleapiclient.http import MediaIoBaseUpload
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.oauth2.credentials import Credentials
 
-OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY", ""))
-GOOGLE_DRIVE_FOLDER_ID = st.secrets.get("GOOGLE_DRIVE_FOLDER_ID", os.getenv("GOOGLE_DRIVE_FOLDER_ID", "1Q_isBiLXre0PGEFsc7Y9CS3EU8W1DzB2"))
 GOOGLE_CREDENTIALS_FILE = "credentials.json"
 SCOPES = ['https://www.googleapis.com/auth/drive']
 CHROMA_DB_PATH = "./chroma_db"
