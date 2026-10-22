@@ -26,8 +26,8 @@ from fpdf import FPDF
 
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
-from google_auth_oauthlib.flow import InstalledAppFlow
-from google.oauth2.credentials import Credentials
+from google.oauth2.service_account import Credentials
+from google.oauth2.credentials import Credentials as UserCredentials
 
 GOOGLE_CREDENTIALS_FILE = "credentials.json"
 SCOPES = ['https://www.googleapis.com/auth/drive']
@@ -138,7 +138,6 @@ def create_pdf(text_content):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", size=11)
-    # טיפול בטקסט רגיל לייצוא PDF
     lines = text_content.split('\n')
     for line in lines:
         cleaned_line = line.encode('latin-1', 'replace').decode('latin-1')
@@ -165,30 +164,41 @@ def get_vector_db():
     )
 
 def get_drive_service():
-    creds = None
+    # 1. ניסיון קריאה מ-Streamlit Secrets (חשבון שירות ענן)
+    if "GCP_SERVICE_ACCOUNT" in st.secrets:
+        try:
+            creds_dict = json.loads(st.secrets["GCP_SERVICE_ACCOUNT"])
+            creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
+            return build('drive', 'v3', credentials=creds)
+        except Exception as e:
+            st.error(f"שגיאה בחיבור דרך Service Account: {e}")
+
+    # 2. ניסיון קריאה מקובץ token.json מקומי
     if os.path.exists('token.json'):
-        creds = Credentials.from_authorized_user_file('token.json', SCOPES)
-    if not creds or not creds.valid:
-        if not os.path.exists(GOOGLE_CREDENTIALS_FILE):
-            return None
-        flow = InstalledAppFlow.from_client_secrets_file(GOOGLE_CREDENTIALS_FILE, SCOPES)
-        creds = flow.run_local_server(port=0)
-        with open('token.json', 'w') as token:
-            token.write(creds.to_json())
-    return build('drive', 'v3', credentials=creds)
+        try:
+            creds = UserCredentials.from_authorized_user_file('token.json', SCOPES)
+            if creds and creds.valid:
+                return build('drive', 'v3', credentials=creds)
+        except Exception:
+            pass
+
+    return None
 
 def upload_text_as_file_to_drive(file_title, text_content):
     drive_service = get_drive_service()
     if not drive_service:
-        return False, "שגיאה בחיבור ל-Google Drive."
+        return False, "לא מוגדרות הרשאות חיבור תקפות ל-Google Drive בשרת הענן."
 
-    file_metadata = {
-        'name': f"{file_title}_{datetime.now().strftime('%Y%m%d_%H%M')}.txt",
-        'parents': [GOOGLE_DRIVE_FOLDER_ID]
-    }
-    media = MediaIoBaseUpload(io.BytesIO(text_content.encode('utf-8')), mimetype='text/plain')
-    uploaded_file = drive_service.files().create(body=file_metadata, mediaBody=media, fields='id').execute()
-    return True, uploaded_file.get('id')
+    try:
+        file_metadata = {
+            'name': f"{file_title}_{datetime.now().strftime('%Y%m%d_%H%M')}.txt",
+            'parents': [GOOGLE_DRIVE_FOLDER_ID]
+        }
+        media = MediaIoBaseUpload(io.BytesIO(text_content.encode('utf-8')), mimetype='text/plain')
+        uploaded_file = drive_service.files().create(body=file_metadata, mediaBody=media, fields='id').execute()
+        return True, uploaded_file.get('id')
+    except Exception as e:
+        return False, str(e)
 
 def load_sync_log():
     if os.path.exists(SYNC_LOG_FILE):
@@ -296,13 +306,9 @@ with tab1:
     if "current_proposal" in st.session_state:
         st.markdown("### 📄 טיוטת המסמך המוצעת:")
         
-        # תצוגת המסמך
         current_text = st.session_state.get("edited_proposal", st.session_state["current_proposal"])
         st.text_area("תוכן ההסכם (תצוגה)", value=current_text, height=350, key="display_area")
 
-        # ==========================================
-        # כפתורי הפעולה החדשים
-        # ==========================================
         btn_col1, btn_col2, btn_col3, btn_col4 = st.columns(4)
 
         with btn_col1:
@@ -330,16 +336,15 @@ with tab1:
         with btn_col4:
             if st.button("💾 שמור ב-Drive"):
                 with st.spinner("מעלה את המסמך המנוסח לתיקייה בדרייב..."):
-                    success, file_id = upload_text_as_file_to_drive(
+                    success, res_msg = upload_text_as_file_to_drive(
                         st.session_state["current_category"],
                         current_text
                     )
                     if success:
                         st.success("🎉 המסמך נשמר בהצלחה ב-Google Drive!")
                     else:
-                        st.error("שגיאה בעת שמירת המסמך לדרייב.")
+                        st.error(f"שגיאה בעת שמירת המסמך לדרייב: {res_msg}")
 
-        # תיבת עריכה שנפתחת בלחיצה על "ערוך את ההסכם המוצע"
         if st.session_state.get("show_edit_box", False):
             st.markdown("---")
             st.subheader("✏️ עריכת הטקסט המוצע:")
