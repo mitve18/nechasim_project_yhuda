@@ -138,23 +138,31 @@ st.markdown("""
         box-shadow: 0 0 0 3px rgba(28, 58, 96, 0.2) !important;
     }
 
-    /* כפתור ראשי - כחול נייבי משרדי */
+    /* תיקון כפתורים - ניגודיות מלאה וטקסט לבן בולט */
     .stButton > button {
         background: linear-gradient(135deg, #1c3a60 0%, #0b1e36 100%) !important;
         color: #ffffff !important;
-        font-weight: 700 !important;
-        font-size: 1.1rem !important;
+        font-weight: 800 !important;
+        font-size: 1.15rem !important;
         border-radius: 8px !important;
-        padding: 0.8rem 2rem !important;
-        border: 1px solid #d4af37 !important;
-        box-shadow: 0 4px 12px rgba(28, 58, 96, 0.3) !important;
+        padding: 0.85rem 2rem !important;
+        border: 1.5px solid #d4af37 !important;
+        box-shadow: 0 4px 12px rgba(11, 30, 54, 0.3) !important;
         width: 100%;
-        transition: all 0.2s ease !important;
+        transition: all 0.25s ease-in-out !important;
     }
 
     .stButton > button:hover {
-        background: #0b1e36 !important;
+        background: linear-gradient(135deg, #0b1e36 0%, #1c3a60 100%) !important;
+        color: #fef08a !important; /* צהוב-זהב בהיר ברחף */
         border-color: #ffffff !important;
+        box-shadow: 0 6px 18px rgba(11, 30, 54, 0.45) !important;
+        transform: translateY(-1px) !important;
+    }
+
+    .stButton > button p, .stButton > button span {
+        color: #ffffff !important;
+        font-weight: 800 !important;
     }
 
     .metric-card {
@@ -364,7 +372,6 @@ def get_specific_file_content(file_name, drive_service):
         files = results.get('files', [])
         
         if not files:
-            # בדיקה בתיקיית הפלט
             query_out = f"'{OUTPUT_FOLDER_ID}' in parents and name = '{file_name}' and trashed = false"
             results_out = drive_service.files().list(q=query_out, fields="files(id, name, mimeType)").execute()
             files = results_out.get('files', [])
@@ -414,7 +421,6 @@ def generate_contract_proposal(mode, selected_category, selected_base_file, part
         retrieved_context = f"התבססות מלאה על המסמך: {selected_base_file}"
 
     else:
-        # מצב ניסוח חופשי/שקיל מכלל ה-RAG
         search_query = f"{selected_category} {special_terms}"
         results = collection.query(query_texts=[search_query], n_results=15)
 
