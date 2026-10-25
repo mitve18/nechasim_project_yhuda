@@ -81,7 +81,7 @@ st.markdown("""
         justify-content: space-between;
     }
 
-    /* תיקון צבע הכותרת הראשית ללבן בוהק */
+    /* כותרת ראשית בלבן בוהק */
     .mod-official-header h1, .mod-official-header .header-title {
         color: #ffffff !important;
         font-weight: 800 !important;
@@ -365,15 +365,18 @@ def chunk_text(text, chunk_size=800, overlap=150):
 def list_all_files_recursive(drive_service, folder_id):
     """סריקה עמוקה של קבצים בתיקייה ובתת-תיקיות"""
     all_files = []
-    query = f"'{folder_id}' in parents and trashed = false"
-    results = drive_service.files().list(q=query, pageSize=100, fields="files(id, name, mimeType)").execute()
-    items = results.get('files', [])
+    try:
+        query = f"'{folder_id}' in parents and trashed = false"
+        results = drive_service.files().list(q=query, pageSize=100, fields="files(id, name, mimeType)").execute()
+        items = results.get('files', [])
 
-    for item in items:
-        if item['mimeType'] == 'application/vnd.google-apps.folder':
-            all_files.extend(list_all_files_recursive(drive_service, item['id']))
-        else:
-            all_files.append(item)
+        for item in items:
+            if item['mimeType'] == 'application/vnd.google-apps.folder':
+                all_files.extend(list_all_files_recursive(drive_service, item['id']))
+            else:
+                all_files.append(item)
+    except Exception as e:
+        print(f"Error listing files recursively: {e}")
 
     return all_files
 
@@ -475,47 +478,4 @@ def get_specific_file_content(file_name, drive_service):
 
 def generate_contract_proposal(mode, selected_category, selected_base_file, party_a, party_b, special_terms, new_dates, new_price, new_scope, collection, client, drive_service):
     
-    if mode == "התבססות מוחלטת על הסכם קיים ספציפי" and selected_base_file:
-        base_text = get_specific_file_content(selected_base_file, drive_service)
-        if not base_text:
-            return "שגיאה: לא ניתן היה לשלוף את תוכן המסמך הנבחר מהדרייב.", "", []
-
-        prompt = f"""
-אתה מנוע משפטי מתקדם של יחידת מתוו"ה במשרד הביטחון.
-תפקידך: להתבסס **באופן מוחלט** על המסמך המקורי הקיים המצורף מטה, לשמור על המבנה, הסעיפים והניסוח המדויק שלו, ולבצע **אך ורק** את השינויים שהוגדרו.
-
-מסמך המקור להתבססות מוחלטת:
-=========================================
-{base_text}
-=========================================
-
-שינויים ועדכונים שנדרש להטמיע במסמך החדש:
-- צד א' מעודכן: {party_a}
-- צד ב' מעודכן: {party_b}
-- תאריכים / לוחות זמנים חדשים: {new_dates if new_dates else "ללא שינוי"}
-- מחיר / תמורה מעודכנת: {new_price if new_price else "ללא שינוי"}
-- תכולת עבודה / שינויים בתכולה: {new_scope if new_scope else "ללא שינוי"}
-- דגשים מיוחדים נוספים: {special_terms if special_terms else "ללא"}
-
-הנחיות קשיחות:
-1. שמור על כל סעיפי ההסכם המקורי, הניסוח והסגנון המשפטי שלו ב-100%.
-2. עדכן באופן טבעי בלבד את התאריכים, המחיר, שמות הצדדים והתכולה בהתאם לפרטים החדשים.
-"""
-        sources = [selected_base_file]
-        retrieved_context = f"התבססות מלאה על המסמך: {selected_base_file}"
-
-    else:
-        search_query = f"{selected_category} {special_terms}"
-        results = collection.query(query_texts=[search_query], n_results=15)
-
-        retrieved_context = ""
-        sources = set()
-
-        if results and results.get("documents"):
-            for docs, metass in zip(results["documents"], results["metadatas"]):
-                for doc, meta in zip(docs, metass):
-                    retrieved_context += f"\n[מתוך: {meta.get('filename')} | סוג: {meta.get('category_type', 'כללי')}]\n{doc}\n"
-                    sources.add(meta.get('filename'))
-
-        prompt = f"""
-אתה מנוע משפטי מתקדם של יחידת מתוו"ה במשרד הביטח
+    if mode == "התבססות מוחלטת על הסכם קיים ספציפי" and selected_
