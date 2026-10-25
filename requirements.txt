@@ -1,6 +1,7 @@
 streamlit
 openai
 chromadb
+pypdf
 PyMuPDF
 google-api-python-client
 google-auth-httplib2
